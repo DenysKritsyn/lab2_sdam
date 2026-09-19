@@ -1,4 +1,9 @@
 import tkinter as tk
+import collections
+import matplotlib.pyplot as plt
+import tkinter.messagebox as messagebox
+import math
+from itertools import accumulate
 from tkinter import messagebox
 from parameters.average import getAverage
 from parameters.median import getMedian
@@ -15,47 +20,213 @@ from parameters.central_statistical_moment import getCentralStatisticalMoment
 from parameters.asymmetry import getAsymmetry
 from parameters.excess import getExcess
 
+
+# Variant 15
+default_values = [
+    [0.36, 0.38, 0.38, 0.37, 0.40, 0.38, 0.36],
+    [0.52, 0.19, 0.11, 0.00, 0.57, 0.42, 0.25],
+    [0.29, 0.32, 0.34, 0.34, 0.49, 0.52, 0.81]
+]
+
+matrix_vars = []
+
+###########################################
+# Matrix for entering representing sample
+###########################################
+
+def init_matrix():
+    for row_i in range(len(default_values)):
+        row_vars = []
+        for column_j in range(len(default_values[row_i])):
+            row_vars.append(tk.StringVar(value=str(default_values[row_i][column_j])))
+        matrix_vars.append(row_vars)
+
+def redraw_matrix():
+    for widget in matrix_frame.winfo_children():
+        widget.destroy()
+        
+    for row_i, row_vars in enumerate(matrix_vars):
+        for column_j, var in enumerate(row_vars):
+            ent = tk.Entry(matrix_frame, textvariable=var, width=7,  relief=tk.SOLID, borderwidth=1)
+            ent.grid(row=row_i, column=column_j, padx=2, pady=2)
+
+def add_row():
+    if not matrix_vars:
+        matrix_vars.append([tk.StringVar(value="")])
+    else:
+        matrix_vars.append([tk.StringVar(value="") for _ in range(len(matrix_vars[0]))])
+    redraw_matrix()
+
+def delete_row():
+    if len(matrix_vars) > 1:
+        matrix_vars.pop()
+        redraw_matrix()
+
+def add_column():
+    for row in matrix_vars:
+        row.append(tk.StringVar(value=""))
+    redraw_matrix()
+
+def delete_column():
+    if matrix_vars and len(matrix_vars[0]) > 1:
+        for row in matrix_vars:
+            row.pop()
+        redraw_matrix()
+
+# Get matrix data as a single dimention list
+def get_matrix_data():
+    flat_list = []
+    for row in matrix_vars:
+        for var in row:
+            val = var.get().strip().replace(',', '.')
+            if val:
+                flat_list.append(float(val))
+    return flat_list
+
+#########################################################
+# Calculate visualization table of result interval series
+#########################################################
+
+def calculate_intervals(num_series):
+    """
+    Calculates the interval statistical series from a given numeric sample.
+    Returns:
+        list of tuples: [( (start, end), z_i, m_i ), ...]
+    """
+    N = len(num_series)
+    
+    # Handle edge cases for empty or uniform datasets
+    if N == 0:
+        return []
+    if N == 1 or min(num_series) == max(num_series):
+        x_val = num_series[0] if N > 0 else 0
+        return [((x_val, x_val), x_val, N)]
+    
+    # Sturges' formula: k = 1 + 3.322 * lg(N)
+    k = max(1, round(1 + 3.322 * math.log10(N)))
+    
+    x_min, x_max = min(num_series), max(num_series)
+    h = (x_max - x_min) / k  # Step (width) of each interval
+    
+    intervals = []
+    
+    for i in range(k):
+        # Calculate interval boundaries
+        start = x_min + i * h
+        # Ensure the last interval exactly hits the max value
+        end = x_max if i == k - 1 else x_min + (i + 1) * h
+        
+        #  Calculate the middle of interval (z_i)
+        z_i = (start + end) / 2
+        
+        # Count frequencies (m_i) for the current interval
+        if i == k - 1:
+            # Last interval includes the right boundary: [start, end]
+            m_i = sum(1 for x in num_series if start <= x <= end)
+        else:
+            # Standard intervals exclude the right boundary: [start, end)
+            m_i = sum(1 for x in num_series if start <= x < end)
+            
+        intervals.append(((start, end), z_i, m_i))
+        
+    return intervals
+
+# Helper function to create a table cell
+def create_cell(text_val, row, col, is_header=False):
+    font_weight = "bold" if is_header else "normal"
+    lbl = tk.Label(
+        table_frame, 
+        text=text_val, 
+        bg="white", 
+        fg="black", 
+        font=("Arial", 10, font_weight), 
+        relief=tk.SOLID, 
+        borderwidth=1, 
+        padx=5, 
+        pady=5
+    )
+    lbl.grid(row=row, column=col, sticky="nsew")
+
+def draw_interval_table(table_frame, intervals=None):
+
+    # Clear table
+    for widget in table_frame.winfo_children():
+        widget.destroy()
+          
+    # Draw row headers
+    headers = ["Intervals", "z_i", "m_i"]
+    for row_idx, header in enumerate(headers):
+        create_cell(header, row_idx, 0, is_header=True)
+        
+    # Draw placeholder table if no data is provided
+    if not intervals:
+        for col_idx in range(1, 7):
+            for row_idx in range(3):
+                create_cell("null", row_idx, col_idx)
+        
+        # Configure columns to stretch evenly
+        for c in range(7):
+            table_frame.grid_columnconfigure(c, weight=1)
+        return
+        
+    # Draw data if provided
+    for col_idx, (interval, z_i, m_i) in enumerate(intervals, start=1):
+        start, end = interval
+        
+        # Format interval string (last interval has an inclusive right bracket)
+        bracket = "]" if col_idx == len(intervals) else ")"
+        interval_str = f"[{start:.3f}; {end:.3f}{bracket}"
+        
+        # Format midpoint to max 4 decimal
+        z_i_str = f"{z_i:.4f}".rstrip('0').rstrip('.')
+        
+        # Fill the column with data
+        create_cell(interval_str, 0, col_idx)
+        create_cell(z_i_str, 1, col_idx)
+        create_cell(str(m_i), 2, col_idx)
+        
+    # Configure columns to stretch evenly
+    for c in range(len(intervals) + 1):
+        table_frame.grid_columnconfigure(c, weight=1)
+
+# Show parameters
 def estimate_parameters():
-    raw_data = entry_series.get()
     try:
-        # Allow numbers to be separated by spaces or commas
-        clean_data = raw_data.replace(',', ' ')
-        num_series = [float(x) for x in clean_data.split()]
+        num_series = get_matrix_data()
         
         if not num_series:
-            messagebox.showwarning("Warning", "Please enter at least one number.")
+            messagebox.showwarning("Warning", "Enter at least one number.")
             return
 
-        # Computations
+        # Visualize result interval series
+        intervals = calculate_intervals(num_series)
+        draw_interval_table(table_frame, intervals)
+
         avg = getAverage(num_series)
         med = getMedian(num_series)
+        scope = getScope(num_series)
+        m_exp = getMathExpectation(num_series)
+        disp = getDispersion(num_series)
+        mod_disp = getModifiedDispersion(num_series)
+        mod_std_dev = getModifiedStandardDeviation(num_series)
+        init_moment_2 = getInitialStatisticalMoment(2, num_series)
+        cent_moment_2 = getCentralStatisticalMoment(2, num_series)
+        std_dev = getStandardDeviation(num_series)
         
         try:
             mod = getMode(num_series)
         except NoModeError:
             mod = "No Mode (all numbers are unique)"
-            
-        scope = getScope(num_series)
-        m_exp = getMathExpectation(num_series)
-        disp = getDispersion(num_series)
-        std_dev = getStandardDeviation(num_series)
-        mod_disp = getModifiedDispersion(num_series)
-        mod_std_dev = getModifiedStandardDeviation(num_series)
-        
-        # Handle potential division by zero
-        try: var = round(getVariation(num_series), 4)
-        except ZeroDivisionError: var = "Error (Math Expectation = 0)"
 
-        init_moment_2 = getInitialStatisticalMoment(2, num_series)
-        cent_moment_2 = getCentralStatisticalMoment(2, num_series)
-        
-        try: asym = round(getAsymmetry(num_series), 4)
-        except ZeroDivisionError: asym = "Error (Standard Deviation = 0)"
-        
-        try: exc = round(getExcess(num_series), 4)
-        except ZeroDivisionError: exc = "Error (Standard Deviation = 0)"
+        if std_dev == 0:
+            var = "Error (Math Expectation = 0)"
+            asym = "Error (Standard Deviation = 0)"
+            exc = "Error (Standard Deviation = 0)"
+        else:
+            var = round(getVariation(num_series), 4)
+            asym = round(getAsymmetry(num_series), 4)
+            exc = round(getExcess(num_series), 4)
 
-        # Display results
         result_text.config(state=tk.NORMAL)
         result_text.delete(1.0, tk.END)
         
@@ -80,125 +251,173 @@ def estimate_parameters():
         result_text.config(state=tk.DISABLED)
 
     except ValueError:
-        messagebox.showerror("Error", "Invalid input. Please use only numbers separated by spaces or commas.")
+        messagebox.showerror("Error", "Incorrect data. Allowed only integers.")
     except Exception as e:
         messagebox.showerror("Error", f"An error occurred: {str(e)}")
 
+# Modify graphic, making him 'step alike'
+def make_step_tuple(base_tuple):
+    idx, X, F_x, color, title, ylabel = base_tuple
+    x_horiz, y_horiz = [], []
+    x_vert, y_vert = [], []
+    offset = (X[-1] - X[0]) * 0.1 if len(X) > 1 else 1.0
+    x_horiz.extend([X[0] - offset, X[0], float('nan')])
+    y_horiz.extend([0, 0, float('nan')])
+    prev_f_x = 0
+    for i in range(len(X)):
+        current_x = X[i]
+        current_f_x = F_x[i]
+        x_vert.extend([current_x, current_x, float('nan')])
+        y_vert.extend([prev_f_x, current_f_x, float('nan')])
+        next_x = X[i+1] if i < len(X) - 1 else X[-1] + offset
+        x_horiz.extend([current_x, next_x, float('nan')])
+        y_horiz.extend([current_f_x, current_f_x, float('nan')])
+        prev_f_x = current_f_x
+    return (idx, (x_horiz, x_vert), (y_horiz, y_vert), color, title, ylabel)
+
+# Draw graphs
 def plot_graphs():
-    raw_data = entry_series.get()
+    
     try:
-        clean_data = raw_data.replace(',', ' ')
-        num_series = [float(x) for x in clean_data.split()]
+        num_series = get_matrix_data()
         if not num_series:
-            messagebox.showwarning("Warning", "Please enter at least one number.")
+            messagebox.showwarning("Warning", "Enter data.")
             return
-
-        import matplotlib.pyplot as plt
-        import collections
-
-        n = len(num_series)
-        counts = collections.Counter(num_series)
-        sorted_unique = sorted(counts.keys())
-        
-        freqs = [counts[val] for val in sorted_unique]
-        rel_freqs = [f / n for f in freqs]
-        
-        cum_freqs = []
-        c = 0
-        for f in freqs:
-            c += f
-            cum_freqs.append(c)
             
-        cum_rel_freqs = []
-        cr = 0
-        for rf in rel_freqs:
-            cr += rf
-            cum_rel_freqs.append(cr)
+        N = len(num_series)
         
+        # Estimate general characteristics
+        counts = collections.Counter(num_series)
+        X = sorted(counts.keys())
+        n = [counts[x_i] for x_i in X]
+        p_star = [n_i / N for n_i in n]
+        m = list(accumulate(n))
+        F_x = [m_i / N for m_i in m]
+        
+
+        intervals = calculate_intervals(num_series)
+        if not intervals:
+            return
+            
+        starts = [iv[0][0] for iv in intervals]
+        h = intervals[0][0][1] - intervals[0][0][0]
+        boundaries = starts + [intervals[-1][0][1]]
+        
+        m_i = [iv[2] for iv in intervals]
+        p_i_hist = [val / N for val in m_i]
+        
+        # Set graphs table (2 rows, 3 columns)
         fig, axs = plt.subplots(2, 3, figsize=(15, 10))
-        fig.canvas.manager.set_window_title('Statistical Graphs')
-
-        # Frequency Polygon
-        axs[0, 0].plot(sorted_unique, freqs, marker='o', linestyle='-', color='b')
-        axs[0, 0].set_title('Frequency Polygon')
-        axs[0, 0].set_xlabel('X')
-        axs[0, 0].set_ylabel('Absolute Frequency (n_i)')
-        axs[0, 0].grid(True)
-
-        # Relative Frequency Polygon
-        axs[0, 1].plot(sorted_unique, rel_freqs, marker='o', linestyle='-', color='g')
-        axs[0, 1].set_title('Relative Frequency Polygon')
-        axs[0, 1].set_xlabel('X')
-        axs[0, 1].set_ylabel('Relative Frequency (w_i)')
-        axs[0, 1].grid(True)
-
-        # Cumulative Frequency Curve (Absolute)
-        axs[0, 2].plot(sorted_unique, cum_freqs, marker='o', linestyle='-', color='r')
-        axs[0, 2].set_title('Cumulative Frequency Curve')
-        axs[0, 2].set_xlabel('X')
-        axs[0, 2].set_ylabel('Cumulative Frequency')
-        axs[0, 2].grid(True)
-
-        # Cumulative Relative Frequency Curve
-        axs[1, 0].plot(sorted_unique, cum_rel_freqs, marker='o', linestyle='-', color='orange')
-        axs[1, 0].set_title('Cumulative Relative Freq. Curve')
-        axs[1, 0].set_xlabel('X')
-        axs[1, 0].set_ylabel('Cumulative Rel. Frequency')
-        axs[1, 0].grid(True)
-
-        # Empirical CDF (Step function)
-        x_step = [sorted_unique[0] - 1] + sorted_unique + [sorted_unique[-1] + 1]
-        y_step = [0] + list(cum_rel_freqs) + [1]
+        fig.canvas.manager.set_window_title('Statistical Graphs (Discrete & Interval)')
+        axs = axs.flatten()
         
-        axs[1, 1].step(x_step, y_step, where='post', color='purple')
-        axs[1, 1].plot(sorted_unique, cum_rel_freqs, 'o', color='purple', alpha=0.5)
-        axs[1, 1].set_title('Empirical Distribution Function (ECDF)')
-        axs[1, 1].set_xlabel('X')
-        axs[1, 1].set_ylabel('F*(x)')
-        axs[1, 1].grid(True)
 
-        # Hide the 6th empty subplot
-        axs[1, 2].axis('off')
+        plot_configs = [
+            (0, X, m, 'red', 'Cumulative Frequency Curve', 'Cumulative Frequency (m_i)'),
+            (1, X, F_x, 'orange', 'Cumulative Relative Freq. Curve', 'Cumulative Rel. Frequency (m_i / N)'),
+            make_step_tuple((2, X, F_x, 'purple', 'Empirical Distribution Function, F(x)', 'F(x)'))
+        ]
+        
+        for idx, x_data, y_data, color, title, ylabel in plot_configs:
+            ax = axs[idx]
+            if idx == 2:
+                x_h, x_v = x_data
+                y_h, y_v = y_data
+                ax.plot(x_h, y_h, linestyle='-', color=color)
+                ax.plot(x_v, y_v, linestyle='--', color=color, alpha=0.5)
+                
+                # Filled and hollow dots for ECDF
+                ax.plot(X, F_x, 'o', color=color, alpha=0.5)
+                hollow_y = [0] + F_x[:-1]
+                ax.plot(X, hollow_y, 'o', markerfacecolor='white', markeredgecolor=color, color=color, alpha=0.5)
+            else:
+                ax.plot(x_data, y_data, marker='o', linestyle='-', color=color)
+                
+            ax.set_title(title)
+            ax.set_xlabel('Variants (X)')
+            ax.set_ylabel(ylabel)
+            ax.grid(True, linestyle='--', alpha=0.5)
+            
 
+        # Absolute Frequency Histogram
+        ax3 = axs[3]
+        ax3.bar(starts, m_i, width=h, align='edge', color='blue', edgecolor='white', alpha=0.7)
+        ax3.set_title('Absolute Frequency Histogram')
+        ax3.set_xlabel('Interval Boundaries')
+        ax3.set_ylabel('Absolute Frequency (m_i)')
+        ax3.set_xticks(boundaries)
+        ax3.set_xticklabels([f"{b:.3f}" for b in boundaries], fontsize=9)
+        ax3.grid(True, linestyle='--', alpha=0.5)
+        
+        # Relative Frequency Histogram
+        ax4 = axs[4]
+        ax4.bar(starts, p_i_hist, width=h, align='edge', color='green', edgecolor='white', alpha=0.7)
+        ax4.set_title('Relative Frequency Histogram')
+        ax4.set_xlabel('Interval Boundaries')
+        ax4.set_ylabel('Relative Frequency (p_i*)')
+        ax4.set_xticks(boundaries)
+        ax4.set_xticklabels([f"{b:.3f}" for b in boundaries], fontsize=9)
+        ax4.grid(True, linestyle='--', alpha=0.5)
+        
+        # Hide 6th unused subplot
+        axs[5].axis('off')
+        
         plt.tight_layout()
         plt.show()
-
+        
     except Exception as e:
         messagebox.showerror("Error", f"An error occurred while plotting: {str(e)}")
 
-# Create main window
+# Creating window
 root = tk.Tk()
 root.title("Statistical Parameters Estimator (Lab 2)")
-root.geometry("600x700")
-root.configure(padx=20, pady=20, bg="#f5f5f5")
+root.geometry("850x850")
+root.configure(bg="#f5f5f5")
 
-# Header
-tk.Label(root, text="Interval Series Characteristics Calculation", font=("Helvetica", 16, "bold"), bg="#f5f5f5").pack(pady=(0, 20))
+tk.Label(root, text="Discrete Series Characteristics Calculation", font=("Arial", 14, "bold"), bg="#f5f5f5", fg="black").pack(pady=(20, 10))
 
-# Input field
-tk.Label(root, text="Enter numerical values (separated by space or comma):", font=("Arial", 11), bg="#f5f5f5").pack(anchor="w")
-input_frame = tk.Frame(root, bg="#f5f5f5")
-input_frame.pack(fill=tk.X, pady=5)
+# Fill table
+matrix_frame = tk.Frame(root, bg="#f5f5f5")
+matrix_frame.pack(pady=10)
 
-tk.Label(input_frame, text="X:", font=("Arial", 14), bg="#f5f5f5").pack(side=tk.LEFT, padx=(0, 5))
+init_matrix()
+redraw_matrix()
 
-entry_series = tk.Entry(input_frame, font=("Arial", 14), width=50)
-entry_series.pack(side=tk.LEFT, fill=tk.X, expand=True)
-entry_series.insert(0, "0.14 0.25 0.31 0.57 0.65 0.78 0.42 0.47 0.60 0.91") # Default test data (my variant from laboratory task)
+# Fill table buttons
+ctrl_frame = tk.Frame(root, bg="#f5f5f5")
+ctrl_frame.pack(fill=tk.X, pady=10, padx=20)
 
-# Buttons Frame
-buttons_frame = tk.Frame(root, bg="#f5f5f5")
-buttons_frame.pack(pady=20)
+col_frame = tk.LabelFrame(ctrl_frame, text="Column operations", bg="#f5f5f5", fg="black", font=("Arial", 10))
+col_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
 
-btn_estimate = tk.Button(buttons_frame, text="Estimate", font=("Arial", 13, "bold"), bg="#4CAF50", fg="white", cursor="hand2", command=estimate_parameters)
-btn_estimate.pack(side=tk.LEFT, padx=10, ipadx=10, ipady=5)
+tk.Button(col_frame, text="Add column", bg="#f0f0f0", fg="black", font=("Arial", 10), relief=tk.SOLID, borderwidth=1, command=add_column).pack(fill=tk.X, padx=5, pady=2)
+tk.Button(col_frame, text="Delete column", bg="#f0f0f0", fg="black", font=("Arial", 10), relief=tk.SOLID, borderwidth=1, command=delete_column).pack(fill=tk.X, padx=5, pady=2)
 
-btn_plot = tk.Button(buttons_frame, text="Show Graphs", font=("Arial", 13, "bold"), bg="#2196F3", fg="white", cursor="hand2", command=plot_graphs)
-btn_plot.pack(side=tk.LEFT, padx=10, ipadx=10, ipady=5)
+row_frame = tk.LabelFrame(ctrl_frame, text="Row operations", bg="#f5f5f5", fg="black", font=("Arial", 10))
+row_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=5)
 
-# Text area for results
-tk.Label(root, text="Results:", font=("Arial", 12, "bold"), bg="#f5f5f5").pack(anchor="w")
-result_text = tk.Text(root, font=("Consolas", 12), height=20, state=tk.DISABLED, bg="#ffffff", relief=tk.GROOVE, borderwidth=2)
-result_text.pack(fill=tk.BOTH, expand=True, pady=5)
+tk.Button(row_frame, text="Add row", bg="#f0f0f0", fg="black", font=("Arial", 10), relief=tk.SOLID, borderwidth=1, command=add_row).pack(fill=tk.X, padx=5, pady=2)
+tk.Button(row_frame, text="Delete row", bg="#f0f0f0", fg="black", font=("Arial", 10), relief=tk.SOLID, borderwidth=1, command=delete_row).pack(fill=tk.X, padx=5, pady=2)
+
+# Estimation buttons
+calc_frame = tk.Frame(root, bg="#f5f5f5")
+calc_frame.pack(pady=20)
+
+btn_font = ("Arial", 10, "bold")
+tk.Button(calc_frame, text="Estimate", font=btn_font, bg="#4CAF50", fg="white", cursor="hand2", relief=tk.FLAT, padx=15, pady=5, command=estimate_parameters).pack(side=tk.LEFT, padx=10)
+tk.Button(calc_frame, text="Show Graphs", font=btn_font, bg="#2196F3", fg="white", cursor="hand2", relief=tk.FLAT, padx=15, pady=5, command=plot_graphs).pack(side=tk.LEFT, padx=10)
+
+# Results
+tk.Label(root, text="Results:", font=("Arial", 10, "bold"), bg="#f5f5f5", fg="black").pack(anchor="w", padx=20)
+results_container = tk.Frame(root, bg="#f5f5f5")
+results_container.pack(fill=tk.BOTH, expand=True, padx=20, pady=(5, 20))
+
+table_frame = tk.Frame(results_container, bg="#f5f5f5")
+table_frame.pack(fill=tk.X, pady=(0, 10))
+
+draw_interval_table(table_frame, intervals=calculate_intervals(get_matrix_data()))
+
+result_text = tk.Text(results_container, font=("Consolas", 11), height=15, state=tk.DISABLED, bg="white", fg="black", relief=tk.SOLID, borderwidth=1)
+result_text.pack(fill=tk.BOTH, expand=True)
 
 root.mainloop()
