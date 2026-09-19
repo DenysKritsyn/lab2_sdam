@@ -168,12 +168,12 @@ def plot_graphs():
 
 # Create main window
 root = tk.Tk()
-root.title("Statistical Parameters Estimator (Lab 1)")
+root.title("Statistical Parameters Estimator (Lab 2)")
 root.geometry("600x700")
 root.configure(padx=20, pady=20, bg="#f5f5f5")
 
 # Header
-tk.Label(root, text="Discrete Series Characteristics Calculation", font=("Helvetica", 16, "bold"), bg="#f5f5f5").pack(pady=(0, 20))
+tk.Label(root, text="Interval Series Characteristics Calculation", font=("Helvetica", 16, "bold"), bg="#f5f5f5").pack(pady=(0, 20))
 
 # Input field
 tk.Label(root, text="Enter numerical values (separated by space or comma):", font=("Arial", 11), bg="#f5f5f5").pack(anchor="w")
