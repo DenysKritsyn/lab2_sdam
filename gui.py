@@ -276,8 +276,7 @@ def make_step_tuple(base_tuple):
     return (idx, (x_horiz, x_vert), (y_horiz, y_vert), color, title, ylabel)
 
 # Draw graphs
-def plot_graphs():
-    
+def plot_curves():
     try:
         num_series = get_matrix_data()
         if not num_series:
@@ -290,28 +289,14 @@ def plot_graphs():
         counts = collections.Counter(num_series)
         X = sorted(counts.keys())
         n = [counts[x_i] for x_i in X]
-        p_star = [n_i / N for n_i in n]
         m = list(accumulate(n))
         F_x = [m_i / N for m_i in m]
         
-
-        intervals = calculate_intervals(num_series)
-        if not intervals:
-            return
-            
-        starts = [iv[0][0] for iv in intervals]
-        h = intervals[0][0][1] - intervals[0][0][0]
-        boundaries = starts + [intervals[-1][0][1]]
-        
-        m_i = [iv[2] for iv in intervals]
-        p_i_hist = [val / N for val in m_i]
-        
-        # Set graphs table (2 rows, 3 columns)
-        fig, axs = plt.subplots(2, 3, figsize=(15, 10))
-        fig.canvas.manager.set_window_title('Statistical Graphs (Discrete & Interval)')
+        # Set graphs table (3 rows)
+        fig, axs = plt.subplots(3, 1, figsize=(15, 18))
+        fig.canvas.manager.set_window_title('Statistical Curves (Discrete)')
         axs = axs.flatten()
         
-
         plot_configs = [
             (0, X, m, 'red', 'Cumulative Frequency Curve', 'Cumulative Frequency (m_i)'),
             (1, X, F_x, 'orange', 'Cumulative Relative Freq. Curve', 'Cumulative Rel. Frequency (m_i / N)'),
@@ -338,31 +323,74 @@ def plot_graphs():
             ax.set_ylabel(ylabel)
             ax.grid(True, linestyle='--', alpha=0.5)
             
+            # Show exact coordinate values on axes
+            ax.set_xticks(X)
+            ax.set_xticklabels([str(round(x, 2)) for x in X], fontsize=8)
+            
+            if idx == 2:
+                y_ticks = sorted(list(set([0] + F_x)))
+            else:
+                y_ticks = sorted(list(set(y_data)))
+            ax.set_yticks(y_ticks)
+            ax.set_yticklabels([str(round(y, 3)) for y in y_ticks], fontsize=8)
+
+        plt.tight_layout(pad=3.0, h_pad=8.0)
+        plt.show()
+        
+    except Exception as e:
+        messagebox.showerror("Error", f"An error occurred while plotting: {str(e)}")
+
+def plot_histograms():
+    try:
+        num_series = get_matrix_data()
+        if not num_series:
+            messagebox.showwarning("Warning", "Enter data.")
+            return
+            
+        N = len(num_series)
+        intervals = calculate_intervals(num_series)
+        if not intervals:
+            return
+            
+        starts = [iv[0][0] for iv in intervals]
+        h = intervals[0][0][1] - intervals[0][0][0]
+        boundaries = starts + [intervals[-1][0][1]]
+        
+        m_i = [iv[2] for iv in intervals]
+        p_i_hist = [val / N for val in m_i]
+        
+        # Set graphs table (2 rows, 1 column)
+        fig, axs = plt.subplots(2, 1, figsize=(15, 12))
+        fig.canvas.manager.set_window_title('Statistical Histograms (Interval)')
+        axs = axs.flatten()
 
         # Absolute Frequency Histogram
-        ax3 = axs[3]
-        ax3.bar(starts, m_i, width=h, align='edge', color='blue', edgecolor='white', alpha=0.7)
-        ax3.set_title('Absolute Frequency Histogram')
-        ax3.set_xlabel('Interval Boundaries')
-        ax3.set_ylabel('Absolute Frequency (m_i)')
-        ax3.set_xticks(boundaries)
-        ax3.set_xticklabels([f"{b:.3f}" for b in boundaries], fontsize=9)
-        ax3.grid(True, linestyle='--', alpha=0.5)
+        ax0 = axs[0]
+        ax0.bar(starts, m_i, width=h, align='edge', color='blue', edgecolor='white', alpha=0.7)
+        ax0.set_title('Absolute Frequency Histogram')
+        ax0.set_xlabel('Interval Boundaries')
+        ax0.set_ylabel('Absolute Frequency (m_i)')
+        ax0.set_xticks(boundaries)
+        ax0.set_xticklabels([f"{b:.3f}" for b in boundaries], fontsize=9)
+        unique_m_i = sorted(list(set(m_i)))
+        ax0.set_yticks(unique_m_i)
+        ax0.set_yticklabels([str(y) for y in unique_m_i], fontsize=9)
+        ax0.grid(True, linestyle='--', alpha=0.5)
         
         # Relative Frequency Histogram
-        ax4 = axs[4]
-        ax4.bar(starts, p_i_hist, width=h, align='edge', color='green', edgecolor='white', alpha=0.7)
-        ax4.set_title('Relative Frequency Histogram')
-        ax4.set_xlabel('Interval Boundaries')
-        ax4.set_ylabel('Relative Frequency (p_i*)')
-        ax4.set_xticks(boundaries)
-        ax4.set_xticklabels([f"{b:.3f}" for b in boundaries], fontsize=9)
-        ax4.grid(True, linestyle='--', alpha=0.5)
+        ax1 = axs[1]
+        ax1.bar(starts, p_i_hist, width=h, align='edge', color='green', edgecolor='white', alpha=0.7)
+        ax1.set_title('Relative Frequency Histogram')
+        ax1.set_xlabel('Interval Boundaries')
+        ax1.set_ylabel('Relative Frequency (p_i*)')
+        ax1.set_xticks(boundaries)
+        ax1.set_xticklabels([f"{b:.3f}" for b in boundaries], fontsize=9)
+        unique_p_i = sorted(list(set(p_i_hist)))
+        ax1.set_yticks(unique_p_i)
+        ax1.set_yticklabels([str(round(y, 3)) for y in unique_p_i], fontsize=9)
+        ax1.grid(True, linestyle='--', alpha=0.5)
         
-        # Hide 6th unused subplot
-        axs[5].axis('off')
-        
-        plt.tight_layout()
+        plt.tight_layout(pad=3.0, h_pad=8.0)
         plt.show()
         
     except Exception as e:
@@ -405,7 +433,8 @@ calc_frame.pack(pady=20)
 
 btn_font = ("Arial", 10, "bold")
 tk.Button(calc_frame, text="Estimate", font=btn_font, bg="#4CAF50", fg="white", cursor="hand2", relief=tk.FLAT, padx=15, pady=5, command=estimate_parameters).pack(side=tk.LEFT, padx=10)
-tk.Button(calc_frame, text="Show Graphs", font=btn_font, bg="#2196F3", fg="white", cursor="hand2", relief=tk.FLAT, padx=15, pady=5, command=plot_graphs).pack(side=tk.LEFT, padx=10)
+tk.Button(calc_frame, text="Show Curves", font=btn_font, bg="#2196F3", fg="white", cursor="hand2", relief=tk.FLAT, padx=15, pady=5, command=plot_curves).pack(side=tk.LEFT, padx=10)
+tk.Button(calc_frame, text="Show Histograms", font=btn_font, bg="#FF9800", fg="white", cursor="hand2", relief=tk.FLAT, padx=15, pady=5, command=plot_histograms).pack(side=tk.LEFT, padx=10)
 
 # Results
 tk.Label(root, text="Results:", font=("Arial", 10, "bold"), bg="#f5f5f5", fg="black").pack(anchor="w", padx=20)
